@@ -1,0 +1,575 @@
+---
+title: "Tetris"
+author: ""
+date: "6/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+##' Get accuracy location (x, y) for each square for given xid and yid
+##'
+##' This function will get accuracy lcoation (x, y) for each square for given xid and yid.
+##' @title Get location
+##' @param BoxIDx the ID for X-axis
+##' @param BoxIDy the ID for y-axis
+##' @author Tingting & Chang
+##' @export
+GetxyforBoxes<-function(BoxIDx, BoxIDy)
+{
+  # 由于要设置成30*15的棋盘，因此我们把格子宽度统一为1/30
+  BoxIDx<-as.integer(BoxIDx)
+  BoxIDy<-as.integer(BoxIDy)
+  xlow<-(BoxIDx-1)/30
+  xupper<-BoxIDx/30
+  ylow<-(BoxIDy-1)/30
+  yupper<-BoxIDy/30
+  list(xlim=c(xlow,xupper),ylim=c(ylow,yupper))
+}
+
+##' Generate a random tetromino without any shape
+##'
+##' This function will generate a random tetromino.
+##' @title Generate tetromino
+##' @author Tingting & Chang
+##' @export
+Getinittetromino<-function()
+{
+  # 生成一个新俄罗斯方块
+  # 设置其出现位置因为方块宽度最多为3，xid_coord表示新方块最左侧的坐标
+  # 因此设置为宽度减去2，15-2=13
+  xid_coord<-1:13
+  xid_LeftBottom<-sample(x = xid_coord[1:(length(xid_coord-1))],1)
+  xid<-c(xid_LeftBottom,xid_LeftBottom+1,xid_LeftBottom+2)
+  # 新方块的初试高度设置
+  yid<-c(30,31,32)
+  tetromino<-matrix(0,nrow = 3,ncol = 3)
+  rownames(tetromino)<-rev(as.character(yid))
+  colnames(tetromino)<-xid
+  tetromino
+}
+
+##' assign a shape to tetromino
+##'
+##' This function will assign a shape to tetromino.
+##' @title Shape tetromino
+##' @param tetromino the matrix indicate the location of a tetromino
+##' @author Tingting & Chang
+##' @export
+GetType<-function(tetromino)
+{
+  coloredID<-list()
+  type<-sample(1:7,1)
+  ty<-GetTypeMatrix(type)
+  tetromino<-tetromino+ty
+  list(Cubes=tetromino, type=4)
+}
+
+
+##' Write a 3x3 matrix as a specific shape tetromino
+##'
+##' This function will write a 3x3 matrix as a specific shape tetromino.
+##' @title Write tetromino information
+##' @param type a indicate for whichi shape will be chosen.
+##' @author Tingting & Chang
+##' @export
+GetTypeMatrix<-function(type)
+{
+  if(type==1) ### type I
+  {
+    ty<-matrix(c(0,0,0,1,1,1,0,0,0),nrow = 3, ncol = 3)
+  }
+  if(type==2) ## type O
+  {
+    ty<-matrix(c(0,0,0,0,1,1,0,1,1),nrow = 3, ncol = 3)
+  }
+  if(type==3) ## type T
+  {
+    ty<-matrix(c(0,1,0,0,1,1,0,1,0),nrow = 3, ncol = 3)
+  }
+  if(type==4) ## type S
+  {
+    ty<-matrix(c(1,1,0,0,1,1,0,0,0),nrow = 3, ncol = 3)
+  }
+  if(type==5) ## type Z
+  {
+    ty<-matrix(c(0,1,1,1,1,0,0,0,0),nrow = 3, ncol = 3)
+  }
+  if(type==6) ## type L
+  {
+    ty<-matrix(c(0,0,0,1,1,1,0,0,1),nrow = 3, ncol = 3)
+  }
+  if(type==7) ## type J
+  {
+    ty<-matrix(c(0,0,1,1,1,1,0,0,0),nrow = 3, ncol = 3)
+  }
+  ty
+}
+
+##' Get (x,y) for squares in a tetromino which should be colored.
+##'
+##' This function will write a 3x3 matrix as a specific shape tetromino.
+##' @title Get index of colored square in a tetromino
+##' @param tetromino the matrix indicate the location of a tetromino
+##' @author Tingting & Chang
+##' @export
+GetIndexList<-function(tetromino)
+{
+  row_id<-rownames(tetromino)
+  col_id<-colnames(tetromino)
+  nNotZeros<-length(which(tetromino!=0))
+  xy_id<-data.frame(x=rep(0,nNotZeros),y=rep(0,nNotZeros))
+  k=1
+  for (i in row_id)
+  {
+    for (j in col_id)
+    {
+      if(tetromino[i,j]!=0)
+      {
+        xy_id[k,"y"]=as.integer(i)
+        xy_id[k,"x"]=as.integer(j)
+        k<-k+1
+      }
+    }
+  }
+  xy_id
+}
+
+
+##' Generate a NA 20x10 matrix for the game
+##'
+##' This function will generate a NA 20x10 matrix for the game.
+##' @title Generate backgroud matrix
+##' @author Tingting & Chang
+##' @export
+totalMatrix<-function()
+{
+  # 修改棋盘大小为30*15
+  tablebg<-matrix(0,nrow = 30,ncol = 15)
+  rownames(tablebg)<-rev(as.character(1:30))
+  colnames(tablebg)<-as.character(1:15)
+  tablebg
+}
+
+##' Generate a tetromino.
+##'
+##' This function will a tetromino.
+##' @title Generate tetromino
+##' @author Tingting & Chang
+##' @export
+GnrCubes<-function()
+{
+  tetromino<-Getinittetromino()
+  tetromino<-GetType(tetromino)
+  tetromino_id<-GetIndexList(tetromino$Cubes)
+  list(cubesID=tetromino_id,cubeMatrix=tetromino$Cubes)
+}
+
+##' Check if the tetromino should move down
+##'
+##' This function will check if the tetromino can move down
+##' @title Check tetrominos moving towards
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export
+checkNextBlock_y<-function(cubes,tables)
+{
+  for (i in 1:nrow(cubes))
+  {
+    nexty=cubes[i,"y"]-1
+    nextx=cubes[i,"x"]
+    # 根据新的棋盘大小，设置新的边界条件，nexty>30和nextx>15
+    if(nexty>30)
+      next()
+    if(nexty<1)
+      return(FALSE)
+    if(nextx>15)
+      return(FALSE)
+    if(nextx<1)
+      return(FALSE)
+    ele<-tables[as.character(nexty),as.character(nextx)]
+    if(ele==1)
+    {
+      return(FALSE)
+    }
+
+  }
+  return(TRUE)
+}
+
+##' Check if the tetromino should move down 3
+##'
+##' This function will check if the tetromino can move down 3
+##' @title Check tetrominos moving towards
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export
+checkNext1Block_y<-function(cubes,tables,direct)
+{
+  # 原代码中使用此函数用来检验方块是否能够向下坠落3个格子
+  # 但由于检测3个格子的代码没有用，这里将3修改为1与checkNextBlock_y相同，后续会在俄罗斯方块下坠中使用
+  for (i in 1:nrow(cubes))
+  {
+    nexty=cubes[i,"y"]-1
+    nextx=cubes[i,"x"]
+    if(nexty>30)
+      next()
+    if(nexty<1)
+      return(FALSE)
+    if(nextx>15)
+      return(FALSE)
+    if(nextx<1)
+      return(FALSE)
+    ele<-tables[as.character(nexty),as.character(nextx)]
+    if(ele==1)
+    {
+      return(FALSE)
+    }
+
+  }
+  return(TRUE)
+}
+
+##' Check if the tetromino should move left or right
+##'
+##' This function will check if the tetromino can move right ot left.
+##' @title Check tetrominos moving right/left
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export 
+checkNextBlock_x<-function(cubes,tables,direct)
+{
+  for (i in 1:nrow(cubes))
+  {
+    nexty=cubes[i,"y"]
+    nextx=cubes[i,"x"]+direct
+    if(nexty>30)
+      next()
+    if(nexty<1)
+      return(FALSE)
+    if(nextx>15)
+      return(FALSE)
+    if(nextx<1)
+      return(FALSE)
+    ele<-tables[as.character(nexty),as.character(nextx)]
+    if(ele==1)
+    {
+      return(FALSE)
+    }
+
+  }
+  return(TRUE)
+}
+
+##' Move the dropping tetromino to the left
+##'
+##' This function will move the dropping tetromino to the left
+##' @title Move left
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export
+MoveLeft<-function(cubes,tables)
+{
+  checkNext_X<-checkNextBlock_x(cubes$cubesID,tables,-1)
+  if (checkNext_X)
+  {
+    cubes$cubesID[,'x']<- cubes$cubesID[,'x']-1
+    colnames(cubes$cubeMatrix)<-as.numeric(colnames(cubes$cubeMatrix))-1
+  }
+  cubes
+}
+##' Move the dropping tetromino to the right.
+##'
+##' This function will move the dropping tetromino to the right.
+##' @title Move right
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export
+MoveRight<-function(cubes,tables)
+{
+  checkNext_X<-checkNextBlock_x(cubes$cubesID,tables,1)
+  if (checkNext_X)
+  {
+    cubes$cubesID[,'x']<- cubes$cubesID[,'x']+1
+    colnames(cubes$cubeMatrix)<-as.numeric(colnames(cubes$cubeMatrix))+1
+  }
+  cubes
+}
+
+##' Move down the dropping tetromino.
+##'
+##' This function will move  down the dropping tetromino.
+##' @title Move right
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @param tables a matrix which contains the information of the current backgroup including previous tetrominos location
+##' @author Tingting & Chang
+##' @export
+MoveDown<-function(cubes,tables)
+{
+  # 重新设置向下移动的函数
+  # 原先是一次会向下移动3格
+  # 新函数中通过while循环，使得方块每次会下降一格，直到下降到底部
+  # 不能再下降为止，从而实现方块落底
+  # 注意，这里判断是否能下降时使用了上文修改后的checkNext1Block_y函数
+  checkNext_y<-checkNext1Block_y(cubes$cubesID,tables)
+  while (checkNext_y) {
+    cubes$cubesID[,"y"]<-cubes$cubesID[,"y"]-1
+    rownames(cubes$cubeMatrix)<-as.numeric(rownames(cubes$cubeMatrix))-1
+    checkNext_y<-checkNext1Block_y(cubes$cubesID,tables)
+  }
+  cubes
+}
+
+##' Rotate the dropping tetromino.
+##'
+##' This function will rotate the dropping tetromino.
+##' @title Rotate the dropping tetromino.
+##' @param cubes a matrix which contains the information where tetromino locates
+##' @author Tingting & Chang
+##' @export
+rotate<-function(cubes,tables)
+{
+  # 后续在实现旋转功能时，我们尽可能利用了原有的rotate函数
+  tetromino<-cubes$cubeMatrix
+  xname<-colnames(tetromino)
+  yname<-rownames(tetromino)
+  if(min(as.numeric(yname))==0)
+  {
+    yname<-as.character(as.numeric(yname)+1)
+  }
+  if(min(as.numeric(xname))==0)
+  {
+    xname<-as.character(as.numeric(xname)+1)
+  }
+  if(max(as.numeric(xname))==16)
+  {
+    xname<-as.character(as.numeric(xname)-1)
+  }
+  tetromino<-t(apply(tetromino, 2, rev))
+  rownames(tetromino)<-yname
+  colnames(tetromino)<-xname
+  cubesID<-GetIndexList(tetromino)
+  cubes_after<-list(cubesID=cubesID,cubeMatrix=tetromino)
+  check<-checkNextBlock_x(cubes_after$cubesID,tables,0)
+  if(!check)
+  {
+    cubes_tmp<-MoveRight(cubes_after,tables)
+    check2<-checkNextBlock_x(cubes_tmp$cubesID,tables,0)
+    if(!check2)
+    {
+      cubes_tmp<-MoveLeft(cubes_after,tables)
+      check3<-checkNextBlock_x(cubes_tmp$cubesID,tables,0)
+      if(check3)
+      {
+        cubes<-cubes_tmp
+      }
+    }
+    else
+    {
+      cubes<-cubes_tmp
+    }
+  }else
+  {
+    cubes<-cubes_after
+  }
+  cubes
+}
+
+
+##' Backgroup initialization
+##'
+##' This function will draw a blank table in Website before starting game
+##' @title Backgroup initialization
+##' @author Tingting & Chang
+##' @export
+drawTable<-function(totalscore)
+{
+  # 在原有函数基础上根据新的棋盘长宽进行修改
+  step<-0.5/15
+  x<-seq(0,0.5,by=step)
+  y<-seq(0,1,by=step)
+  gp<-ggplot(data = data.frame(0,0))+xlim(c(0,0.5))+ylim(c(0,1))+
+    # 将网格线颜色设置成和背景一样，从而达到去除网格线的效果
+    geom_vline(xintercept=seq(0,0.5,by=step),aes(col="gray"),color="#ebebeb")+
+    geom_hline(yintercept=seq(0,1,by=step),aes(col="gray"),color="#ebebeb")+
+    scale_y_continuous(expand=c(0,0))+
+    scale_x_continuous(expand = c(0,0))+
+    # 右上角显示总分
+    geom_text(aes(x=0.375, y=0.975,label=paste("Current Score:",totalscore)), size=5) +
+    xlab("")+ylab("")+
+    coord_fixed() +
+    theme(axis.title=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          panel.grid = element_blank())
+  gp
+}
+
+##' Update the whole sreen of Teris
+##'
+##' This function will update the figure when location of tetriminos is change.
+##' when the location of tetriminos is changed, the variable TableMatrix will change as well.
+##' @title Update location of tetriminos
+##' @param TableMatrix the matrix indicates will part should be colored as blue
+##' @author Tingting & Chang
+##' @export
+updateBackGround<-function(TableMatrix,totalscore)
+{
+  # 根据新的棋盘大小设置参数
+  step<-0.5/15
+  x<-seq(0,0.5,by=step)
+  y<-seq(0,1,by=step)
+  gp<-ggplot(data = data.frame(0,0))+xlim(c(0,0.5))+ylim(c(0,1))+
+    # 将网格线颜色设置成和背景一样，从而达到去除网格线的效果
+    geom_vline(xintercept=seq(0,0.5,by=step),aes(col="gray"),color="#ebebeb")+
+    geom_hline(yintercept=seq(0,1,by=step),aes(col="gray"),color="#ebebeb")+
+    coord_fixed() +
+    scale_y_continuous(expand=c(0,0))+
+    scale_x_continuous(expand = c(0,0))+
+    # 设置右上角得分显示
+    geom_text(aes(x=0.375, y=0.975,label=paste("Current Score:",totalscore)), size=5) +
+    xlab("")+ylab("")+
+    theme(axis.title=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          panel.grid = element_blank())
+  
+  # 新建四个向量用以存储格子的位置信息
+  xmin <- c()
+  xmax <- c() 
+  ymin <- c()
+  ymax <- c()
+  
+  # 这一部分函数是闪屏问题中的核心函数
+  # 原函数在长期运行后会出现严重的频闪问题
+  # 这一现象是由于ggplot函数效率过低所导致的
+  # 原函数通过ggplot图层的叠加来刷新整个棋盘，每多一个方块，便多一个图层
+  # 这种方式所花时间与格子数量线性相关，也是原代码中导致运行后期卡顿的原因
+  # 为解决这个问题，先在循环中获取所有格子的坐标，存储在数据框中
+  # 最后根据数据框中的数据直接在一个图层中画出所有格子
+  # 从而解决频闪问题
+  for (i in 1:nrow(TableMatrix))
+  {
+    for (j in 1:ncol(TableMatrix))
+    {
+      e<-TableMatrix[as.character(i),as.character(j)]
+      if(e==1)
+      {
+        xylim<-GetxyforBoxes(j,i)
+        # 存储信息
+        xmin <- append(xmin,xylim$xlim[1])
+        xmax <- append(xmax,xylim$xlim[2])
+        ymin <- append(ymin,xylim$ylim[1])
+        ymax <- append(ymax,xylim$ylim[2])
+        # gp<-gp+ geom_rect(
+        #   xmin=xylim$xlim[1],xmax=xylim$xlim[2],
+        #   ymin=xylim$ylim[1],ymax=xylim$ylim[2],
+        #   fill="blue",alpha=0.5
+        #   )
+      }
+    }
+  }
+  
+  # 将数据整理为数据框
+  df <- data.frame(
+    xmin = xmin,
+    xmax = xmax,
+    ymin = ymin,
+    ymax = ymax
+  )
+  
+  # 只有在有格子需要绘制的时候，才会触发以下函数
+  # 否则在新方块出现的时候会出现bug
+  if (length(xmin)>0) {
+    gp<-gp+ geom_rect(
+      aes(xmin=xmin,
+          xmax=xmax,
+          ymin=ymin,
+          ymax=ymax),
+      data=df,
+      fill="blue",
+      alpha=0.5)
+  }
+  gp
+}
+
+##' Update Teris figure when a tetromino is dropping
+##'
+##' This function will update the figure when location of tetriminos is dropping or rotating.
+##' @title Update location of tetriminos
+##' @param gp plot object which contian current backgroup
+##' @param tetromino the matrix indicates the location of dropping tetromino
+##' @author Tingting & Chang
+##' @export
+UpdateTable<-function(gp, tetromino)
+{
+  for (i in 1:nrow(tetromino))
+  {
+    # 新的边界条件
+    if(tetromino [i,"y"]>30)
+      next()
+    xylim<-GetxyforBoxes(tetromino [i,"x"],tetromino [i,"y"])
+    gp<-gp+ geom_rect(xmin=xylim$xlim[1],xmax=xylim$xlim[2], ymin=xylim$ylim[1],ymax=xylim$ylim[2],fill="blue",alpha=0.5)
+  }
+  gp
+}
+
+
+##' Check if the player will win points
+##'
+##' This function will check if any lines are filled by same color and player will win 10 points
+##' @title Win points
+##' @param tables a matrix which contains the information where tetrominos locates
+##' @author Tingting & Chang
+##' @export
+GetScore <- function(tables)
+{
+  xname<-colnames(tables)
+  yname<-rownames(tables)
+  score<-0
+  # 若某一行均被填满（15格），则消去那一行，得分增加消去格子数（15分）
+  index<-which(apply(tables, 1, sum)==15)
+  if(length(index)>0)
+  {
+    score<-score+15*length(index)
+    temp<-tables[-index,]
+    tables<-rbind(matrix(0,ncol = ncol(tables),nrow = length(index)),temp)
+  }
+  colnames(tables)<-xname
+  rownames(tables)<-yname
+  list(tables=tables,score=score)
+}
+
+##' Check if the game will ends
+##'
+##' This function will check if any coloums is filled by same color and the game will be end
+##' @title End Game
+##' @param tables a matrix which contains the information where tetrominos locates
+##' @author Tingting
+##' @export
+endGame<- function(tables)
+{
+  status<- any(tables["30",]==1)
+  return(status)
+}
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(shinydashboard)
+appDir <- "D:/RStudio/elsfk/R/shinyApp"
+shiny::runApp(appDir, display.mode = "normal")
+```
+
